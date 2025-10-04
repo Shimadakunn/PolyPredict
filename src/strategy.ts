@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { websocket } from "./utils/url";
-import { creds } from "./utils/client";
+import { getClobClient } from "./utils/client";
 import { updateBook } from "./functions";
 
 const userWS = new WebSocket(websocket + "/ws/user");
@@ -32,8 +32,8 @@ export class Strategy {
     );
     // === User WS ===
     this.userWS = userWS;
-    this.userWS.on("open", () => this.onUserWsOpen());
-    this.userWS.on("message", (message: any) => this.onUserMessage(message));
+    // this.userWS.on("open", () => this.onUserWsOpen());
+    // this.userWS.on("message", (message: any) => this.onUserMessage(message));
   }
 
   // === Market Handlers ===
@@ -49,18 +49,21 @@ export class Strategy {
   private onMarketMessage(message: string) {
     if (message === "PONG") return;
     const messageJson = JSON.parse(message);
+    // console.log("messageJson:", messageJson);
     if (messageJson.event_type === "book") updateBook.call(this, messageJson);
+    else console.log("Unhandled message type:", messageJson.event_type);
     // console.log("this .book:", this.book);
   }
 
   // === User Handlers ===
   private async onUserWsOpen() {
-    const auth = await creds;
+    const auth = await getClobClient();
+    console.log("Auth:", auth);
     this.userWS.send(
       JSON.stringify({
         markets: [this.asset],
         type: "user",
-        auth,
+        auth: auth.deriveApiKey(),
       })
     );
   }
