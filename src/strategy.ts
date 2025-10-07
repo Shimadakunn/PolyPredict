@@ -1,7 +1,9 @@
 import WebSocket from "ws";
 import { websocket } from "./utils/url";
-import { getClobClient } from "./utils/client";
+import { getClient } from "./utils/client";
 import { updateBook } from "./functions";
+import { ClobClient } from "@polymarket/clob-client";
+import { getOrders } from "./functions/getOrders";
 
 const userWS = new WebSocket(websocket + "/ws/user");
 const marketWS = new WebSocket(websocket + "/ws/market");
@@ -14,26 +16,38 @@ interface Book {
 
 export class Strategy {
   public asset: string;
+  public client: ClobClient | null = null;
+  public book: Book | null;
+  public orders: any[] = [];
+  public orderPlaced: boolean = false;
   // === Market Variables ===
   public marketWS: WebSocket;
-  public book: Book | null;
   // === User Variables ===
   public userWS: WebSocket;
-  public orderPlaced: boolean = false;
 
   constructor(asset: string) {
     this.asset = asset;
+    this.book = null;
     // === Market WS ===
     this.marketWS = marketWS;
-    this.book = null;
     this.marketWS.on("open", () => this.onMarketWsOpen());
     this.marketWS.on("message", (message: any) =>
       this.onMarketMessage(message)
     );
     // === User WS ===
     this.userWS = userWS;
-    // this.userWS.on("open", () => this.onUserWsOpen());
-    // this.userWS.on("message", (message: any) => this.onUserMessage(message));
+    this.userWS.on("open", () => this.onUserWsOpen());
+    this.userWS.on("message", (message: any) => this.onUserMessage(message));
+  }
+
+  async init() {
+    console.log("Initializing Strategy for asset:", this.asset);
+    this.client = await getClient();
+    console.log("Client initialized", this.client ? "Success" : "Failed");
+
+    // await getOrders.call(this);
+    // console.log("Initial Orders:", this.orders);
+    return this;
   }
 
   // === Market Handlers ===
@@ -44,28 +58,27 @@ export class Strategy {
         type: "market",
       })
     );
+    console.log("Market WS connected");
   }
 
   private onMarketMessage(message: string) {
     if (message === "PONG") return;
     const messageJson = JSON.parse(message);
-    // console.log("messageJson:", messageJson);
     if (messageJson.event_type === "book") updateBook.call(this, messageJson);
-    else console.log("Unhandled message type:", messageJson.event_type);
-    // console.log("this .book:", this.book);
   }
 
   // === User Handlers ===
   private async onUserWsOpen() {
-    const auth = await getClobClient();
-    console.log("Auth:", auth);
+    console.log("User WS Open");
+    console.log("Auth:", await this.client!.deriveApiKey());
     this.userWS.send(
       JSON.stringify({
         markets: [this.asset],
         type: "user",
-        auth: auth.deriveApiKey(),
+        auth: await this.client!.deriveApiKey(),
       })
     );
+    console.log("User WS connected");
   }
 
   private onUserMessage(message: string) {
