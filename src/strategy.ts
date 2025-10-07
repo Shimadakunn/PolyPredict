@@ -5,9 +5,6 @@ import { updateBook } from "./functions";
 import { ClobClient } from "@polymarket/clob-client";
 import { getOrders } from "./functions/getOrders";
 
-const userWS = new WebSocket(websocket + "/ws/user");
-const marketWS = new WebSocket(websocket + "/ws/market");
-
 interface Book {
   asks: [price: string, size: string][];
   bids: [price: string, size: string][];
@@ -15,35 +12,34 @@ interface Book {
 }
 
 export class Strategy {
+  // === Config ===
   public asset: string;
   public client: ClobClient | null = null;
-  public book: Book | null;
+  // === Market Variables ===
+  public marketWS: WebSocket | null = null;
+  // === User Variables ===
+  public userWS: WebSocket | null = null;
+  // === Strategy Variables ===
+  public book: Book | null = null;
   public orders: any[] = [];
   public orderPlaced: boolean = false;
-  // === Market Variables ===
-  public marketWS: WebSocket;
-  // === User Variables ===
-  public userWS: WebSocket;
 
   constructor(asset: string) {
     this.asset = asset;
-    this.book = null;
-    // === Market WS ===
-    this.marketWS = marketWS;
+  }
+
+  async init() {
+    this.client = await getClient();
+
+    this.marketWS = new WebSocket(websocket + "/ws/market");
     this.marketWS.on("open", () => this.onMarketWsOpen());
     this.marketWS.on("message", (message: any) =>
       this.onMarketMessage(message)
     );
-    // === User WS ===
-    this.userWS = userWS;
+
+    this.userWS = new WebSocket(websocket + "/ws/user");
     this.userWS.on("open", () => this.onUserWsOpen());
     this.userWS.on("message", (message: any) => this.onUserMessage(message));
-  }
-
-  async init() {
-    console.log("Initializing Strategy for asset:", this.asset);
-    this.client = await getClient();
-    console.log("Client initialized", this.client ? "Success" : "Failed");
 
     // await getOrders.call(this);
     // console.log("Initial Orders:", this.orders);
@@ -52,7 +48,7 @@ export class Strategy {
 
   // === Market Handlers ===
   private onMarketWsOpen() {
-    this.marketWS.send(
+    this.marketWS!.send(
       JSON.stringify({
         assets_ids: [this.asset],
         type: "market",
@@ -70,12 +66,13 @@ export class Strategy {
   // === User Handlers ===
   private async onUserWsOpen() {
     console.log("User WS Open");
-    console.log("Auth:", await this.client!.deriveApiKey());
-    this.userWS.send(
+    const apiKey = await this.client!.deriveApiKey();
+    console.log("Auth:", apiKey);
+    this.userWS!.send(
       JSON.stringify({
         markets: [this.asset],
         type: "user",
-        auth: await this.client!.deriveApiKey(),
+        auth: apiKey,
       })
     );
     console.log("User WS connected");
