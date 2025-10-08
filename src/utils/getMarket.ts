@@ -1,5 +1,6 @@
-import { gamma } from "./url";
 import { formatInTimeZone } from "date-fns-tz";
+
+const gamma = "https://gamma-api.polymarket.com";
 
 export async function getMarket(): Promise<any> {
   const time = formatInTimeZone(

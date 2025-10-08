@@ -1,75 +1,171 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-PolyPredict is a Bun-based TypeScript application for real-time market making on Polymarket. It connects to Polymarket's CLOB (Central Limit Order Book) and real-time WebSocket APIs to monitor market data and execute trading strategies.
+**PolyPredict** - Polymarket trading bot/strategy implementation that monitors real-time market data via WebSockets and executes automated trading strategies on Polygon (Chain ID: 137).
 
 ## Development Commands
 
-```bash
-# Install dependencies
-bun install
+### Core Commands
+- `bun install` - Install all dependencies
+- `bun run src/index.ts` or `bun start` - Start the trading bot
+- `bun test` - Run test suite
 
-# Run main application (starts WebSocket connections)
-bun run start
+### Verification
+- **ALWAYS verify TypeScript compilation** with `bun --check src/index.ts` after code changes
+- **CRITICAL**: Test WebSocket connections before deploying changes to strategy logic
 
-# Run tests
-bun test
-```
+## Architecture Overview
 
-## Environment Setup
+### Tech Stack
+- **Runtime**: Bun (JavaScript runtime, NOT Node.js)
+- **Language**: TypeScript with strict mode enabled
+- **Blockchain**: Polygon (Chain ID: 137)
+- **Main Dependencies**:
+  - `@polymarket/clob-client` - CLOB (Central Limit Order Book) client for order management
+  - `@polymarket/real-time-data-client` - Real-time market data
+  - `ws` - WebSocket client for market/user connections
+  - `viem` - Ethereum library for wallet operations
+  - `date-fns-tz` - Timezone-aware date formatting
 
-Requires `.env` file with:
+### Key Files
+- **@src/index.ts** - Entry point, initializes Strategy with market token ID
+- **@src/strategy.ts** - Main Strategy class with WebSocket handlers
+- **@src/utils/client.ts** - ClobClient singleton initialization
+- **@src/utils/getMarket.ts** - Fetches market data from Gamma API
+- **@src/utils/url.ts** - API endpoint constants (gamma, clob, websocket)
+- **@src/functions.ts** - Core strategy functions (updateBook)
+- **@src/functions/setOrder.ts** - Order creation and posting logic
+- **@src/functions/getOrders.ts** - Fetch user orders
 
-- `PRIVATE_KEY`: Ethereum wallet private key for signing Polymarket transactions
+### Architecture Patterns
+- **Strategy Pattern**: Main logic encapsulated in Strategy class
+- **Lazy Initialization**: ClobClient initialized once via `getClient()`
+- **Context Binding**: Strategy methods use `.call(this)` pattern
+- **Dual WebSocket**: Separate connections for market data and user events
 
-## Architecture
+## Code Style & Conventions
 
-### Core Components
+### TypeScript Configuration
+- **Module System**: ESNext with bundler resolution
+- **Strict Mode**: Enabled (strict: true)
+- **noUncheckedIndexedAccess**: Enabled - ALWAYS check array access with `!` or optional chaining
+- **Target**: ESNext
+- **NEVER use CommonJS** - This is ESNext module project
 
-1. **Main Entry Point** ([src/index.ts](src/index.ts))
+### Import Patterns
+- Use `@src/` prefix for absolute imports from src folder
+- **ALWAYS import types** from @polymarket/clob-client: `Side`, `OrderType`, `SignedOrder`
+- Standard imports:
+  ```typescript
+  import { Strategy } from "./strategy";
+  import { ClobClient, Side, OrderType } from "@polymarket/clob-client";
+  ```
 
-   - Initializes the application by fetching the current hourly Bitcoin price up and down market's YES tokenID
-   - Creates Strategy instance initialized with the tokenID
+### Naming Conventions
+- **Classes**: PascalCase (e.g., `Strategy`)
+- **Functions**: camelCase (e.g., `getMarket`, `updateBook`)
+- **Files**: camelCase for utils/functions (e.g., `getMarket.ts`, `setOrder.ts`)
+- **WebSocket variables**: Suffix with `WS` (e.g., `marketWS`, `userWS`)
 
-2. **Strategy Class** ([src/strategy.ts](src/strategy.ts))
+### Code Organization
+- **Utility functions**: Place in `src/utils/`
+- **Strategy functions**: Place in `src/functions/` (for complex logic) or `src/functions.ts` (for simple logic)
+- **ALWAYS use context binding** for strategy methods: `functionName.call(this)` when calling from Strategy class
 
-   - `Strategy` class manages two separate WebSocket connections:
-     - **Market WebSocket**: Receives order book updates, price changes, and trade events
-     - **User WebSocket**: Authenticated connection for user-specific order updates and positions
-   - Both connections share the same asset/token being monitored
-   - The variables of the class will manage the active orderblock, the user open orders...
+## Environment & Configuration
 
-3. **functions** ([src/functions.ts](src/functions.ts))
+### Required Environment Variables
+- **CRITICAL**: `PRIVATE_KEY` - Ethereum wallet private key (MUST be in `.env` file)
+- **NEVER commit `.env` file** to version control
 
-   - File where will define the main functions of the strategy.
-   - Functions will be called in order to modify `Strategy` class variables in function of market order blocks and user placed orders
+### Hardcoded Configuration
+- **Funder Address**: `0x6c778108c3e556e522019ED0c001192c6c72F99D` in @src/utils/client.ts:5
+- **Chain ID**: 137 (Polygon) in @src/utils/client.ts:14,16
+- **API Endpoints**: Defined in @src/utils/url.ts
+  - Gamma API: `https://gamma-api.polymarket.com`
+  - CLOB API: `https://clob.polymarket.com`
+  - WebSocket: `wss://ws-subscriptions-clob.polymarket.com`
 
-4. **Market Data Utilities** ([src/utils/](src/utils/))
-   - `getMarket.ts`: Fetches market data by constructing time-based slugs (e.g., "bitcoin-up-or-down-october-2-1pm-et")
-   - `client.ts`: Initializes Polymarket CLOB client with wallet signer
-   - `url.ts`: API endpoints (gamma API, CLOB, WebSocket)
+## Strategy Implementation Patterns
 
-### Data Flow
+### WebSocket Management
+- **Market WebSocket** (`/ws/market`): Subscribes to order book updates
+  - Sends: `{ assets_ids: [tokenId], type: "market" }`
+  - Receives: Book updates with `event_type: "book"`
+- **User WebSocket** (`/ws/user`): Subscribes to user-specific events
+  - **CRITICAL**: MUST authenticate with API key from `client.deriveApiKey()`
+  - Sends: `{ markets: [tokenId], type: "user", auth: apiKey }`
 
-1. Application starts → Fetches current Bitcoin market via slug-based API call
-2. Extracts CLOB token ID from market data
-3. Establishes market WebSocket → Subscribes to order book updates
-4. Establishes user WebSocket → Authenticates with derived API key
-5. Market events flow through strategy handlers
-6. Functions will be called update states and execute orders
+### Order Management
+- **Order Creation**: Use `client.createOrder()` with required fields:
+  - `tokenID`: Asset token ID (string)
+  - `price`: Order price (number, e.g., 0.1 for 10%)
+  - `side`: `Side.BUY` or `Side.SELL`
+  - `size`: Order size (number)
+  - `feeRateBps`: Fee rate in basis points (number)
+  - `expiration`: Unix timestamp (number)
+- **Order Posting**: Use `client.postOrder(order, OrderType.GTD)` for Good-Till-Date orders
+- **ALWAYS check** `resp.errorMessage` after posting orders
 
-### Key Design Patterns
+### Book Updates
+- Book structure: `{ asks: [price, size][], bids: [price, size][], timestamp: string }`
+- **ALWAYS filter** by `asset_id` before processing book updates
+- Book updates trigger in @src/functions.ts:updateBook
 
-- **Shared helpers via `this` context**: `updateBook` in [src/functions.ts](src/functions.ts) uses `.call(this, ...)` to modify Main instance state
-- **Time-based market resolution**: Markets identified by formatted timestamps in ET timezone
-- **Event-driven architecture**: WebSocket messages route to specific handlers based on `event_type`
+### Market Selection
+- **CRITICAL**: Market slugs follow pattern `bitcoin-up-or-down-{time}-et`
+- Time format: `MMMM-d-haa` in America/New_York timezone (e.g., `january-7-9am`)
+- Market data fetched from Gamma API: `${gamma}/markets/slug/${slug}`
 
-## TypeScript Configuration
+## Development Workflow
 
-- Target: ESNext with bundler module resolution
-- Strict mode enabled with `noUncheckedIndexedAccess`
-- Allows importing `.ts` extensions (Bun-specific)
-- No emit (runtime via Bun)
+### Before Starting
+1. **REQUIRED**: Create `.env` file with `PRIVATE_KEY=<your-private-key>`
+2. Run `bun install` to install dependencies
+3. **CRITICAL**: Ensure wallet has sufficient funds on Polygon
+
+### Making Changes to Strategy
+1. Modify strategy logic in @src/strategy.ts or functions
+2. **ALWAYS verify** WebSocket message handlers for breaking changes
+3. Test with `bun run src/index.ts`
+4. Monitor console output for "Market WS connected" and "User WS connected"
+
+### Adding New Strategy Functions
+1. Create file in `src/functions/` (e.g., `cancelOrder.ts`)
+2. **MUST use** `this: Strategy` as first parameter for context binding
+3. Import and call with `.call(this)` from Strategy class
+4. Export as named export, NOT default
+
+### Debugging
+- WebSocket PONG messages are filtered (return early)
+- **ALWAYS log** user messages to understand event flow
+- Check `orderPlaced` flag to prevent duplicate orders
+- Verify `client` is initialized before calling ClobClient methods
+
+## Critical Rules
+
+- **NEVER hardcode private keys** in source code
+- **ALWAYS use lazy initialization** for ClobClient (via getClient())
+- **NEVER call `setOrder()` twice** - Check `orderPlaced` flag
+- **CRITICAL**: Order expiration MUST be future timestamp in seconds
+- **ALWAYS handle** WebSocket errors and reconnection logic
+- **BEFORE committing**: Verify no `.env` or sensitive data is staged
+
+## Common Pitfalls
+
+1. **Forgetting to authenticate User WebSocket** - MUST call `client.deriveApiKey()` and send in auth field
+2. **Not checking `asset_id` in book updates** - Always filter by `this.asset`
+3. **Using milliseconds for expiration** - Convert to seconds: `Math.floor(Date.now() / 1000) + duration`
+4. **Not handling PONG messages** - Always early return on "PONG" messages
+5. **Accessing array without null check** - Use `clobTokenIds[0]!` due to noUncheckedIndexedAccess
+
+## Testing Strategy Changes
+
+1. Use small order sizes (e.g., `size: 5`) for testing
+2. Use low prices (e.g., `price: 0.1`) to minimize risk
+3. Short expiration times (e.g., 1-2 minutes) for test orders
+4. Monitor both WebSocket connections for proper message flow
+5. **ALWAYS verify** orders appear in user WebSocket messages after posting

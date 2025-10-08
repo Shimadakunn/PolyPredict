@@ -1,8 +1,8 @@
 import { ClobClient } from "@polymarket/clob-client";
 import { Wallet } from "@ethersproject/wallet";
-import { clob } from "./url";
 
-const funder = "0x6c778108c3e556e522019ED0c001192c6c72F99D";
+const clob = "https://clob.polymarket.com";
+export const funder = "0x6c778108c3e556e522019ED0c001192c6c72F99D";
 const signer = new Wallet(process.env.PRIVATE_KEY!);
 
 // Initialize the clob client with lazy initialization
