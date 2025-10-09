@@ -1,5 +1,5 @@
 import { Strategy } from "../strategy";
-import { funder, getStatus } from "../utils";
+import { funder } from "../utils";
 
 export async function getPositions(this: Strategy) {
   try {
@@ -23,9 +23,6 @@ export async function getPositions(this: Strategy) {
       price: p.avgPrice,
       size: p.size,
     }));
-
-    // Log
-    getStatus.call(this);
   } catch (error) {
     console.error("Failed to load positions:", error);
   }

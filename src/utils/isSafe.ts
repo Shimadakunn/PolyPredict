@@ -11,9 +11,8 @@ export function isSafe(this: Strategy) {
   // Is Safe Time
   const now = new Date();
   if (
-    now.getMinutes() >=
-    60 - this.safeTime
-    // || now.getMinutes() <= this.safeTime
+    now.getMinutes() >= 60 - this.safeTime ||
+    now.getMinutes() <= this.safeTime
   ) {
     getLog.call(
       this,

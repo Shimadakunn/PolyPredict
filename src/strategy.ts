@@ -1,16 +1,17 @@
 import WebSocket from "ws";
 import { ClobClient } from "@polymarket/clob-client";
-import { getClient, getMarket } from "./utils";
-import { getOrders } from "./orders";
-import { brain } from "./brain";
+import { getClient, getMarket, getStatus } from "./utils";
 import { matched } from "./matched";
-import { getPositions } from "./positions/getPositions";
+import { brain } from "./brain";
+import { getOrders } from "./orders";
+import { getPositions } from "./positions";
 
 const websocket = "wss://ws-subscriptions-clob.polymarket.com";
 
 export class Strategy {
   // === Config ===
   public asset: string | null = null;
+  public conditionId: string | null = null;
   public client: ClobClient | null = null;
   public apiCreds: any = null;
 
@@ -51,15 +52,23 @@ export class Strategy {
     const market = await getMarket();
     const clobTokenIds: string[] = JSON.parse(market.clobTokenIds);
     this.asset = clobTokenIds[0]!;
+    this.conditionId = market.conditionId;
+
     const { client, creds } = await getClient();
     this.client = client;
     this.apiCreds = creds;
 
-    // this.marketWS = new WebSocket(websocket + "/ws/market");
-    // this.marketWS.on("open", () => this.onMarketWsOpen());
-    // this.marketWS.on("message", (message: any) =>
-    //   this.onMarketMessage(message)
-    // );
+    this.marketWS = new WebSocket(websocket + "/ws/market");
+    this.marketWS.on("open", () => this.onMarketWsOpen());
+    this.marketWS.on("message", (message: any) =>
+      this.onMarketMessage(message)
+    );
+    this.marketWS.on("error", (error) =>
+      console.error("Market WS error:", error)
+    );
+    this.marketWS.on("close", (code, reason) =>
+      console.log("Market WS closed:", code, reason.toString())
+    );
 
     this.userWS = new WebSocket(websocket + "/ws/user");
     this.userWS.on("open", () => this.onUserWsOpen());
@@ -69,7 +78,8 @@ export class Strategy {
       console.log("User WS closed:", code, reason.toString())
     );
 
-    // await Promise.all([getOrders.call(this), getPositions.call(this)]);
+    await Promise.all([getOrders.call(this), getPositions.call(this)]);
+    getStatus.call(this);
     return this;
   }
 
@@ -86,35 +96,32 @@ export class Strategy {
   private async onMarketMessage(message: string) {
     if (message === "PONG") return;
     const messageJson = JSON.parse(message);
-    // if (messageJson.event_type === "book") await brain.call(this, messageJson);
+    if (messageJson.event_type === "book") await brain.call(this, messageJson);
   }
 
   // === User Handlers ===
   private async onUserWsOpen() {
-    this.userWS!.send(
-      JSON.stringify({
-        markets: [this.asset],
-        type: "user",
-        auth: {
-          apiKey: this.apiCreds.key,
-          secret: this.apiCreds.secret,
-          passphrase: this.apiCreds.passphrase,
-        },
-      })
-    );
-    console.log("User WS connected");
-    this.userWS!.send(JSON.stringify({ event: "PING" }));
+    const subscribeMsg = {
+      markets: this.conditionId ? [this.conditionId] : [],
+      type: "user",
+      auth: {
+        apiKey: this.apiCreds.key,
+        secret: this.apiCreds.secret,
+        passphrase: this.apiCreds.passphrase,
+      },
+    };
+    this.userWS!.send(JSON.stringify(subscribeMsg));
+
+    setInterval(() => {
+      if (this.userWS?.readyState === WebSocket.OPEN) this.userWS.send("PING");
+    }, 10000);
   }
 
   private async onUserMessage(message: any) {
-    console.log("USER MESSAGE RECEIVED:", message);
-    if (Buffer.isBuffer(message)) {
-      const bufferString = message.toString();
-      console.log(bufferString);
-      return;
-    }
-    const messageJson = JSON.parse(message.toString());
-    console.log(messageJson);
+    const msg = Buffer.isBuffer(message) ? message.toString() : message;
+    if (msg === "PONG") return; // Ignore heartbeat responses
+
+    const messageJson = JSON.parse(msg);
     if (messageJson.event_type === "trade")
       await matched.call(this, messageJson);
   }

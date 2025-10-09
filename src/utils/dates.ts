@@ -18,6 +18,12 @@ export const hour = formatInTimeZone(
   "ha"
 ).toLowerCase();
 
+export const minute = formatInTimeZone(
+  new Date(),
+  "America/New_York",
+  "mm"
+).toLowerCase();
+
 export const timestamp = formatInTimeZone(
   new Date(),
   "America/New_York",

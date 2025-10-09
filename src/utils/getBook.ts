@@ -25,7 +25,4 @@ export function getBook(this: Strategy, bookJson: any) {
 
   this.spread = parseFloat((this.bestAsk - this.bestBid).toFixed(2));
   this.midPrice = parseFloat(((this.bestBid + this.bestAsk) / 2).toFixed(2));
-
-  // Log
-  getStatus.call(this);
 }

@@ -51,7 +51,7 @@ export function getStatus(this: Strategy) {
 export function getLog(
   this: Strategy,
   message: string,
-  level: "info" | "error" | "success" = "info"
+  level: "info" | "error" = "info"
 ) {
   const logDir = path.resolve(__dirname, "../../log", day);
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });

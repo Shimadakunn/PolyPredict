@@ -1,12 +1,13 @@
 import { Strategy } from "./strategy";
 import { Side } from "@polymarket/clob-client";
-import { isSafe, getBook } from "./utils";
+import { isSafe, getBook, getStatus } from "./utils";
 import { computePositions } from "./positions";
 import { setOrder, getOrders } from "./orders";
 
 export async function brain(this: Strategy, bookJson: any) {
   // Update book
   getBook.call(this, bookJson);
+  getStatus.call(this);
 
   // Checks
   if (!isSafe.call(this)) return;

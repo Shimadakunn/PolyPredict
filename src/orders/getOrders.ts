@@ -13,9 +13,6 @@ export async function getOrders(this: Strategy) {
       size: parseFloat(order.original_size),
       time: order.created_at,
     }));
-
-    // Log
-    getStatus.call(this);
   } catch (error) {
     console.error("Failed getOrders:", error);
   }

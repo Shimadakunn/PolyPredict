@@ -24,7 +24,7 @@ export async function setOrder(this: Strategy, side: Side, price: number) {
 
     const order = await this.client!.createOrder({
       tokenID: this.asset!,
-      price: 0.1,
+      price: price,
       side: side,
       size: this.minSize,
       feeRateBps: 0,
@@ -43,10 +43,14 @@ export async function setOrder(this: Strategy, side: Side, price: number) {
     getLog.call(
       this,
       `Placed ${side} order: ${this.minSize} @ ${price}`,
-      "success"
+      "info"
     );
   } catch (error: any) {
     const errorMsg = error?.response?.data?.error || error?.message || error;
-    getLog.call(this, `Failed to place order: ${errorMsg}`, "error");
+    getLog.call(
+      this,
+      `Failed to place order ${side} @ ${price} : ${errorMsg}`,
+      "error"
+    );
   }
 }
