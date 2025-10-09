@@ -12,6 +12,7 @@ export class Strategy {
   // === Config ===
   public asset: string | null = null;
   public client: ClobClient | null = null;
+  public apiCreds: any = null;
 
   // === Market Variables ===
   public marketWS: WebSocket | null = null;
@@ -41,8 +42,8 @@ export class Strategy {
   public readonly minSize: number = 5; // Minimum order size
   public readonly maxPosition: number = 100; // Max inventory in shares
 
-  // === Other Config ===
-  public logLine: number = 3; // Number of lines used by logs in terminal (for cursor positioning)
+  // === Logging ===
+  public currentLogLine: number = 3; // Start logs at line 3 (after 2-line status)
 
   constructor() {}
 
@@ -50,20 +51,25 @@ export class Strategy {
     const market = await getMarket();
     const clobTokenIds: string[] = JSON.parse(market.clobTokenIds);
     this.asset = clobTokenIds[0]!;
-    this.client = await getClient();
+    const { client, creds } = await getClient();
+    this.client = client;
+    this.apiCreds = creds;
 
-    this.marketWS = new WebSocket(websocket + "/ws/market");
-    this.marketWS.on("open", () => this.onMarketWsOpen());
-    this.marketWS.on("message", (message: any) =>
-      this.onMarketMessage(message)
-    );
+    // this.marketWS = new WebSocket(websocket + "/ws/market");
+    // this.marketWS.on("open", () => this.onMarketWsOpen());
+    // this.marketWS.on("message", (message: any) =>
+    //   this.onMarketMessage(message)
+    // );
 
     this.userWS = new WebSocket(websocket + "/ws/user");
     this.userWS.on("open", () => this.onUserWsOpen());
     this.userWS.on("message", (message: any) => this.onUserMessage(message));
+    this.userWS.on("error", (error) => console.error("User WS error:", error));
+    this.userWS.on("close", (code, reason) =>
+      console.log("User WS closed:", code, reason.toString())
+    );
 
-    console.clear();
-    await Promise.all([getOrders.call(this), getPositions.call(this)]);
+    // await Promise.all([getOrders.call(this), getPositions.call(this)]);
     return this;
   }
 
@@ -81,25 +87,34 @@ export class Strategy {
     if (message === "PONG") return;
     const messageJson = JSON.parse(message);
     // if (messageJson.event_type === "book") await brain.call(this, messageJson);
-    await brain.call(this, messageJson);
   }
 
   // === User Handlers ===
   private async onUserWsOpen() {
-    const apiKey = await this.client!.deriveApiKey();
     this.userWS!.send(
       JSON.stringify({
         markets: [this.asset],
         type: "user",
-        auth: apiKey,
+        auth: {
+          apiKey: this.apiCreds.key,
+          secret: this.apiCreds.secret,
+          passphrase: this.apiCreds.passphrase,
+        },
       })
     );
+    console.log("User WS connected");
+    this.userWS!.send(JSON.stringify({ event: "PING" }));
   }
 
-  private async onUserMessage(message: string) {
-    if (message === "PONG") return;
-    const messageJson = JSON.parse(message);
-    console.log("User Message:", messageJson);
+  private async onUserMessage(message: any) {
+    console.log("USER MESSAGE RECEIVED:", message);
+    if (Buffer.isBuffer(message)) {
+      const bufferString = message.toString();
+      console.log(bufferString);
+      return;
+    }
+    const messageJson = JSON.parse(message.toString());
+    console.log(messageJson);
     if (messageJson.event_type === "trade")
       await matched.call(this, messageJson);
   }

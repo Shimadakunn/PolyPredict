@@ -1,10 +1,8 @@
-import { formatInTimeZone } from "date-fns-tz";
 import { Strategy } from "../strategy";
-
-const green = "\x1b[32m";
-const magenta = "\x1b[35m";
-const blue = "\x1b[34m";
-const reset = "\x1b[0m";
+import { timestamp, day, hour } from "./dates";
+import * as fs from "fs";
+import * as path from "path";
+import { Colors } from "./colors";
 
 function formatLogLine(left: string, center: string, right: string) {
   const terminalWidth = process.stdout.columns || 80;
@@ -35,11 +33,9 @@ function formatLogLine(left: string, center: string, right: string) {
 
 export function getStatus(this: Strategy) {
   // Titles
-  //   const ordersTitle = magenta + "===== ORDERS =====" + reset;
-  const ordersTitle = magenta + `===== ORDERS ${this.logLine}` + reset;
-
-  const bookTitle = green + "===== BOOK =====" + reset;
-  const positionsTitle = blue + "===== POSITIONS =====" + reset;
+  const ordersTitle = Colors.magenta + "===== ORDERS =====" + Colors.reset;
+  const bookTitle = Colors.yellow + "===== BOOK =====" + Colors.reset;
+  const positionsTitle = Colors.cyan + "===== POSITIONS =====" + Colors.reset;
   const titleLine = formatLogLine(bookTitle, ordersTitle, positionsTitle);
 
   // Infos
@@ -48,25 +44,71 @@ export function getStatus(this: Strategy) {
   const positionsMessage = `Positions: ${this.positions.length} | Net: ${this.position}`;
   const infoLine = formatLogLine(ordersMessage, bookMessage, positionsMessage);
 
-  // Clear previous logs
-  process.stdout.write("\x1b[" + this.logLine + "A"); // Move cursor up by logLine
-  process.stdout.write(`\r${titleLine}\n`); // Return to start of line and print titleLine
-  process.stdout.write(`\r${infoLine}\n`); // Return to start of line and print infoLine
-  process.stdout.write("\x1b[" + this.logLine + "B"); // Move cursor down by logLine
+  console.log(titleLine);
+  console.log(infoLine);
 }
 
-export function getLog(this: Strategy, message: string) {
-  // Print new log
-  getStatus.call(this);
-  console.log(message);
+export function getLog(
+  this: Strategy,
+  message: string,
+  level: "info" | "error" | "success" = "info"
+) {
+  const logDir = path.resolve(__dirname, "../../log", day);
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const logPath = path.join(logDir, `${hour}.log`);
 
-  this.logLine += 1; // Increment logLine for each new log
+  let color: string;
+  if (level === "info") color = Colors.cyan;
+  else if (level === "error") color = Colors.red;
+  else color = Colors.green;
+
+  // Format the log entry
+  const logEntry = `${timestamp} ${level.toUpperCase()} ${message}`;
+  const consoleEntry = `${color}${message}${Colors.reset}`;
+
+  // Write in console
+  console.log(consoleEntry + "\n");
+  // Write in log file
+  getStatusInLog.call(this, logPath);
+  fs.appendFileSync(logPath, `\n${logEntry} \n`);
+  fs.appendFileSync(logPath, "\n" + "-".repeat(75) + "\n\n");
 }
 
-function writeLog() {
-  const time = formatInTimeZone(
-    new Date(),
-    "America/New_York",
-    "MMMM-d-haa"
-  ).toLowerCase();
+function getStatusInLog(this: Strategy, logPath: string) {
+  const positionTitle = `${timestamp} POSITIONS: ${this.positions.length} | NET: ${this.position}`;
+  const positionsDetails = this.positions
+    .map(
+      (pos) =>
+        `  - Side: ${pos.side} | Price: ${pos.price} | Size: ${
+          pos.size
+        } | Time: ${new Date(pos.time).toISOString()}`
+    )
+    .join("\n");
+
+  const ordersTitle = `${timestamp} ORDERS: ${this.orders.length}`;
+  const ordersDetails = [...this.orders]
+    .sort((a, b) => {
+      if (a.side !== b.side) return a.side === "BUY" ? -1 : 1;
+      if (a.side === "BUY") return b.price - a.price; // Higher buy prices first
+      return a.price - b.price; // Lower sell prices first
+    })
+    .map(
+      (order) =>
+        `  - Side: ${order.side} | Price: ${order.price} | Size: ${
+          order.size
+        } | Time: ${new Date(order.time).toISOString()}`
+    )
+    .join("\n");
+
+  const bookTitle = `${timestamp} BOOK | BB: ${this.bestBid} | BA: ${this.bestAsk} | M: ${this.midPrice} | SPR: ${this.spread}`;
+
+  const logContent = [
+    bookTitle,
+    positionTitle,
+    positionsDetails,
+    ordersTitle,
+    ordersDetails,
+  ].filter((s) => s !== "");
+
+  fs.appendFileSync(logPath, logContent.join("\n"));
 }

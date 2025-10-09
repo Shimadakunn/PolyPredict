@@ -19,6 +19,6 @@ export async function matched(this: Strategy, tradeJson: any) {
   const { bidPrice, askPrice, skew } = computePositions.call(this);
 
   // Place orders
-  // await Promise.all([setOrder.call(this, Side.SELL, askPrice)]);
+  await setOrder.call(this, Side.SELL, askPrice);
   getOrders.call(this);
 }
